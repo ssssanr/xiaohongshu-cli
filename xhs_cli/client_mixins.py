@@ -268,16 +268,29 @@ class ReadingEndpointsMixin:
             return self._get_user_info_from_html(user_id)
 
     def get_user_notes(self, user_id: str, cursor: str = "") -> dict[str, Any]:
+        user_id = self._resolve_user_id(user_id)
+        # Fetch profile SSR to get xsec_token, then call API with it
         try:
-            return self._main_api_get("/api/sns/web/v1/user_posted", {
-                "num": 30,
-                "cursor": cursor,
-                "user_id": user_id,
-                "image_scenes": "FD_WM_WEBP",
-            })
+            ssr = self._fetch_user_profile_ssr(user_id)
+            notes_groups = ssr.get("user", {}).get("notes", [])
+            raw_notes = notes_groups[0] if notes_groups else []
+            xsec_token = ""
+            if raw_notes:
+                xsec_token = raw_notes[0].get("xsecToken", "") or raw_notes[0].get("noteCard", {}).get("xsecToken", "")
+            if xsec_token:
+                result = self._main_api_get("/api/sns/web/v1/user_posted", {
+                    "num": 30,
+                    "cursor": cursor,
+                    "user_id": user_id,
+                    "image_formats": "jpg,webp,avif",
+                    "xsec_token": xsec_token,
+                    "xsec_source": "pc_user",
+                })
+                return result
         except XhsApiError:
-            # Fallback: extract notes from profile HTML SSR data
-            return self._get_user_notes_from_html(user_id)
+            pass
+        # Fallback: extract notes from profile HTML SSR data
+        return self._get_user_notes_from_html(user_id)
 
     def _resolve_user_id(self, user_id: str) -> str:
         """Resolve a red_id or nickname to internal hex user_id if needed."""
@@ -348,7 +361,7 @@ class ReadingEndpointsMixin:
                     cover_url = img.get("url", "")
                     break
             notes.append({
-                "note_id": item.get("id", ""),
+                "note_id": item.get("id", "") or nc.get("noteId", ""),
                 "display_title": nc.get("displayTitle", ""),
                 "type": nc.get("type", ""),
                 "user": nc.get("user", {}),
