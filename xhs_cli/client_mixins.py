@@ -269,23 +269,13 @@ class ReadingEndpointsMixin:
 
     def get_user_notes(self, user_id: str, cursor: str = "") -> dict[str, Any]:
         user_id = self._resolve_user_id(user_id)
-        # Fetch profile SSR to get xsec_token
+        # Use SSR data from profile page (user_posted API signing is broken)
         ssr = self._fetch_user_profile_ssr(user_id)
-        notes_groups = ssr.get("user", {}).get("notes", [])
-        raw_notes = notes_groups[0] if notes_groups else []
-        xsec_token = ""
-        if raw_notes:
-            xsec_token = raw_notes[0].get("xsecToken", "") or raw_notes[0].get("noteCard", {}).get("xsecToken", "")
-        if not xsec_token:
-            raise XhsApiError(-1, "Failed to get xsec_token from profile page (cookie may be expired)")
-        return self._main_api_get("/api/sns/web/v1/user_posted", {
-            "num": 30,
-            "cursor": cursor,
-            "user_id": user_id,
-            "image_formats": "jpg,webp,avif",
-            "xsec_token": xsec_token,
-            "xsec_source": "pc_user",
-        })
+        result = self._parse_notes_from_ssr(ssr)
+        notes = result.get("notes", [])
+        if not notes or not notes[0].get("note_id"):
+            raise XhsApiError(-1, "Failed to get user notes (cookie may be expired)")
+        return result
 
     def _resolve_user_id(self, user_id: str) -> str:
         """Resolve a red_id or nickname to internal hex user_id if needed."""
