@@ -290,10 +290,14 @@ class ReadingEndpointsMixin:
                 return result
         except XhsApiError:
             pass
-        # Fallback: parse notes directly from the SSR data we already fetched
+        # Fallback: parse notes from SSR data, but only if they have valid note_ids
         if ssr:
-            return self._parse_notes_from_ssr(ssr)
-        return self._get_user_notes_from_html(user_id)
+            result = self._parse_notes_from_ssr(ssr)
+            notes = result.get("notes", [])
+            if notes and notes[0].get("note_id"):
+                return result
+        # If SSR data is incomplete (e.g. no login), raise error
+        raise XhsApiError(-1, "Failed to get user notes (cookie may be expired)")
 
     def _resolve_user_id(self, user_id: str) -> str:
         """Resolve a red_id or nickname to internal hex user_id if needed."""
