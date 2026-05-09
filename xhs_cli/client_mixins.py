@@ -269,7 +269,8 @@ class ReadingEndpointsMixin:
 
     def get_user_notes(self, user_id: str, cursor: str = "") -> dict[str, Any]:
         user_id = self._resolve_user_id(user_id)
-        # Fetch profile SSR to get xsec_token, then call API with it
+        # Fetch profile SSR to get xsec_token and notes as fallback
+        ssr = None
         try:
             ssr = self._fetch_user_profile_ssr(user_id)
             notes_groups = ssr.get("user", {}).get("notes", [])
@@ -289,7 +290,9 @@ class ReadingEndpointsMixin:
                 return result
         except XhsApiError:
             pass
-        # Fallback: extract notes from profile HTML SSR data
+        # Fallback: parse notes directly from the SSR data we already fetched
+        if ssr:
+            return self._parse_notes_from_ssr(ssr)
         return self._get_user_notes_from_html(user_id)
 
     def _resolve_user_id(self, user_id: str) -> str:
@@ -344,11 +347,9 @@ class ReadingEndpointsMixin:
             "tags": tags,
         }
 
-    def _get_user_notes_from_html(self, user_id: str) -> dict[str, Any]:
-        """Extract user notes from profile HTML SSR data."""
-        ssr = self._fetch_user_profile_ssr(user_id)
+    def _parse_notes_from_ssr(self, ssr: dict[str, Any]) -> dict[str, Any]:
+        """Parse notes from already-fetched SSR data."""
         notes_groups = ssr.get("user", {}).get("notes", [])
-        # First group contains published notes
         raw_notes = notes_groups[0] if notes_groups else []
         notes = []
         for item in raw_notes:
@@ -376,6 +377,11 @@ class ReadingEndpointsMixin:
             "has_more": False,
             "cursor": "",
         }
+
+    def _get_user_notes_from_html(self, user_id: str) -> dict[str, Any]:
+        """Extract user notes from profile HTML SSR data."""
+        ssr = self._fetch_user_profile_ssr(user_id)
+        return self._parse_notes_from_ssr(ssr)
 
     def get_user_notes_with_detail(self, user_id: str) -> dict[str, Any]:
         """Get user notes with full content by fetching each note's detail."""
